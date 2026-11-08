@@ -1,6 +1,6 @@
 /* ロジックツリー スマホ版（iPhone） 画面と操作 */
 'use strict';
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.5';
 const {
   esc, clamp, fmtDate, safeName, uid, kids, childMap, descendants, depthOf, placeholder, levelLabel, labelOf,
   newTree, sampleTree, normalizeTree, ops, snapshot, History, computeLayout, treeSVGInner, COLORS, PRIORITY
@@ -374,6 +374,12 @@ function editorKey(e){
     // 確定して、続けて次のノードを追加（トップイシューなら子、それ以外は兄弟）
     commitEdit({ render: false });
     addNode(id === t.rootId ? 'child' : 'sibling', id);
+  } else if (e.key === 'Backspace' && editorEl().value === '' && id !== t.rootId && !kids(t, id).length) {
+    e.preventDefault();
+    const vis = visibleIds(t), prev = vis[vis.indexOf(id) - 1] || t.rootId;
+    S.editing = null; S.editNew = false;
+    mutate(t => ops.remove(t, id), { render: false });
+    S.sel = prev; startEdit(prev);
   } else if (e.key === 'Escape') { e.preventDefault(); commitEdit(); }
 }
 
@@ -667,17 +673,18 @@ function renderToolbar(){
       <button data-tb="out" ${isRoot ? 'disabled' : ''}>←<small>上げる</small></button>
       <button data-tb="in" ${isRoot ? 'disabled' : ''}>→<small>下げる</small></button>
       <button data-tb="child">＋<small>子</small></button>
+      <button data-tb="del" ${isRoot ? 'disabled' : ''} style="color:var(--danger)">✕<small style="color:var(--danger)">削除</small></button>
       <button data-tb="done" style="font-weight:700;color:var(--accent);font-size:15px">完了</button>
     </div>`;
   } else if (S.sel && t.nodes[S.sel]) {
     const isRoot = S.sel === t.rootId;
     el.innerHTML = `<div class="toolbar">
-      <button data-tb="child">＋<small>子</small></button>
-      <button data-tb="sib" ${isRoot ? 'disabled' : ''}>＋<small>兄弟</small></button>
       <button data-tb="out" ${isRoot ? 'disabled' : ''}>←<small>上げる</small></button>
       <button data-tb="in" ${isRoot ? 'disabled' : ''}>→<small>下げる</small></button>
       <button data-tb="up" ${isRoot ? 'disabled' : ''}>↑<small>上へ</small></button>
       <button data-tb="down" ${isRoot ? 'disabled' : ''}>↓<small>下へ</small></button>
+      <button data-tb="child">＋<small>子</small></button>
+      <button data-tb="sib" ${isRoot ? 'disabled' : ''}>＋<small>兄弟</small></button>
       <button data-tb="del" ${isRoot ? 'disabled' : ''} style="color:var(--danger)">✕<small style="color:var(--danger)">削除</small></button>
       <button data-tb="detail">≡<small>詳細</small></button>
     </div>`;
@@ -693,7 +700,9 @@ function toolbarAction(k){
   const t = T(); if (!t) return;
   const id = S.editing || S.sel; if (!id || !t.nodes[id]) return;
   if (S.editing) {
-    if (k === 'nl') { const ta = editorEl(); ta.setRangeText('\n', ta.selectionStart, ta.selectionEnd, 'end'); syncEditText(); autosize(ta); ta.focus(); return; }
+    if (k === 'nl') { const ta = editorEl(); ta.setRangeText('\n', ta.selectionStart, ta.selectionEnd, 'end'); syncEditText(); if (ta.classList.contains('ted')) redrawTreeSoon(); else autosize(ta); ta.focus(); return; }
+    // 編集中のノードを削除（配下があれば確認）。キーボードは閉じる
+    if (k === 'del') { commitEdit({ render: false }); const ta = editorEl(); if (ta) ta.blur(); renderEditorBody(); return deleteNode(id); }
     if (k === 'done') { commitEdit(); const ta = editorEl(); if (ta) ta.blur(); document.activeElement && document.activeElement.blur(); return; }
     syncEditText(); S.caret = editorEl().selectionStart;
     if (k === 'child') { commitEdit({ render: false }); return addNode('child', id); }
