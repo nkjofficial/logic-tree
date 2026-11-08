@@ -1,6 +1,6 @@
 /* ロジックツリー スマホ版（iPhone） 画面と操作 */
 'use strict';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const {
   esc, clamp, fmtDate, safeName, uid, kids, childMap, descendants, depthOf, placeholder, levelLabel, labelOf,
   newTree, sampleTree, normalizeTree, ops, snapshot, History, computeLayout, treeSVGInner, COLORS, PRIORITY
@@ -148,7 +148,7 @@ function renderList(){
 }
 function openTree(id){
   S.cur = id; const t = T(); S.sel = null; S.lastKey = null; S.tempV = false; S.chipHidden = false;
-  S.view = isPortrait() ? (meta.get('view') || 'outline') : 'tree';
+  S.view = 'tree'; // ツリーを開いたときは、いつもツリー図から表示する
   S.fitPending = true;
   meta.set('current', id);
   go('editor');
@@ -206,7 +206,7 @@ function showNew(pid){
       const t = newTree(name.value.trim() || '無題のツリー', m.querySelector('input[name=nDir]:checked').value, proj);
       if (proj && S.projects[proj].collapsed) { S.projects[proj].collapsed = false; saveProject(S.projects[proj]); }
       S.trees[t.id] = t; scheduleSave(t);
-      openTree(t.id); S.view = 'outline';
+      openTree(t.id);
       render(); startEdit(t.rootId);
     };
     m.querySelector('[data-ok]').onclick = create;
@@ -226,7 +226,7 @@ function renderEditor(){
       <button class="ghost icon" data-act="menu" aria-label="メニュー">⋯</button>
     </div>
     <div id="banners">${bannersHTML()}</div>
-    <div class="seg"><button data-view="outline">アウトライン</button><button data-view="tree">ツリー図</button></div>
+    <div class="seg"><button data-view="tree">ツリー図</button><button data-view="outline">アウトライン</button></div>
     <div id="body" style="flex:1;display:flex;flex-direction:column;min-height:0;position:relative"></div>
     <div id="toolbar"></div>
   </div>`;
