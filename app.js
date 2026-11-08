@@ -1,6 +1,6 @@
 /* ロジックツリー スマホ版（iPhone） 画面と操作 */
 'use strict';
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 const {
   esc, clamp, fmtDate, safeName, uid, kids, childMap, descendants, depthOf, placeholder, levelLabel, labelOf,
   newTree, sampleTree, normalizeTree, ops, snapshot, History, computeLayout, treeSVGInner, COLORS, PRIORITY
@@ -374,12 +374,6 @@ function editorKey(e){
     // 確定して、続けて次のノードを追加（トップイシューなら子、それ以外は兄弟）
     commitEdit({ render: false });
     addNode(id === t.rootId ? 'child' : 'sibling', id);
-  } else if (e.key === 'Backspace' && editorEl().value === '' && id !== t.rootId && !kids(t, id).length) {
-    e.preventDefault();
-    const vis = visibleIds(t), prev = vis[vis.indexOf(id) - 1] || t.rootId;
-    S.editing = null; S.editNew = false;
-    mutate(t => ops.remove(t, id), { render: false });
-    S.sel = prev; startEdit(prev);
   } else if (e.key === 'Escape') { e.preventDefault(); commitEdit(); }
 }
 
@@ -672,6 +666,7 @@ function renderToolbar(){
       <button data-tb="nl">⏎<small>改行</small></button>
       <button data-tb="out" ${isRoot ? 'disabled' : ''}>←<small>上げる</small></button>
       <button data-tb="in" ${isRoot ? 'disabled' : ''}>→<small>下げる</small></button>
+      <button data-tb="sib" ${isRoot ? 'disabled' : ''}>＋<small>兄弟</small></button>
       <button data-tb="child">＋<small>子</small></button>
       <button data-tb="del" ${isRoot ? 'disabled' : ''} style="color:var(--danger)">✕<small style="color:var(--danger)">削除</small></button>
       <button data-tb="done" style="font-weight:700;color:var(--accent);font-size:15px">完了</button>
@@ -683,8 +678,8 @@ function renderToolbar(){
       <button data-tb="in" ${isRoot ? 'disabled' : ''}>→<small>下げる</small></button>
       <button data-tb="up" ${isRoot ? 'disabled' : ''}>↑<small>上へ</small></button>
       <button data-tb="down" ${isRoot ? 'disabled' : ''}>↓<small>下へ</small></button>
-      <button data-tb="child">＋<small>子</small></button>
       <button data-tb="sib" ${isRoot ? 'disabled' : ''}>＋<small>兄弟</small></button>
+      <button data-tb="child">＋<small>子</small></button>
       <button data-tb="del" ${isRoot ? 'disabled' : ''} style="color:var(--danger)">✕<small style="color:var(--danger)">削除</small></button>
       <button data-tb="detail">≡<small>詳細</small></button>
     </div>`;
@@ -706,6 +701,7 @@ function toolbarAction(k){
     if (k === 'done') { commitEdit(); const ta = editorEl(); if (ta) ta.blur(); document.activeElement && document.activeElement.blur(); return; }
     syncEditText(); S.caret = editorEl().selectionStart;
     if (k === 'child') { commitEdit({ render: false }); return addNode('child', id); }
+    if (k === 'sib') { commitEdit({ render: false }); return addNode('sibling', id); }
     // 編集を続けたまま階層を変える。ここまでの文言の変更は別の「元に戻す」単位にする
     if (!S.editNew && S.editBefore && t.nodes[id].text !== S.editOrig) H.push(t.id, S.editBefore);
     const r = mutate(t => k === 'in' ? ops.indent(t, id) : ops.outdent(t, id), { render: false });
