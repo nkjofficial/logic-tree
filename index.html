@@ -84,6 +84,8 @@ input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(-
 .row .txt.low{color:var(--ink2)}
 .row .lv{position:absolute;left:4px;top:2px;font-size:10px;color:var(--ink3)}
 .row .memo{flex:none;width:8px;height:8px;border-radius:50%;background:#E07B24;margin:19px 0 0 6px}
+/* ツリー図の枠の上に重ねる入力欄（大きさと文字組みは app.js で枠に合わせる） */
+.treewrap textarea.ted{position:absolute;z-index:3;margin:0;width:auto;resize:none;overflow:hidden;border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(47,111,181,.18);color:#2B2B2B;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;touch-action:auto;-webkit-user-select:text;user-select:text}
 .row textarea.ed{flex:1;min-width:0;margin:4px 0;padding:6px 8px;line-height:1.5;resize:none;overflow:hidden;min-height:38px;font-size:16px}
 .root-row .txt{font-weight:700}
 .hdrline{font-size:11.5px;color:var(--ink3);padding:8px calc(var(--sl) + 16px) 2px}

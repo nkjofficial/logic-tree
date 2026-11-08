@@ -1,6 +1,6 @@
 /* ロジックツリー スマホ版（iPhone） 画面と操作 */
 'use strict';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const {
   esc, clamp, fmtDate, safeName, uid, kids, childMap, descendants, depthOf, placeholder, levelLabel, labelOf,
   newTree, sampleTree, normalizeTree, ops, snapshot, History, computeLayout, treeSVGInner, COLORS, PRIORITY
@@ -312,8 +312,8 @@ function select(id){
 function startEdit(id, opts = {}){
   const t = T(); if (!t || !t.nodes[id]) return;
   if (S.editing && S.editing !== id) commitEdit({ render: false });
-  if (S.view !== 'outline') { S.view = 'outline'; meta.set('view', 'outline'); }
   S.sel = id; S.editing = id; S.editNew = !!opts.isNew;
+  if (S.view === 'tree') S.treeEditStart = true;
   S.editOrig = t.nodes[id].text; S.editBefore = opts.isNew ? null : snapshot(t);
   S.caret = null;
   renderEditorBody();
@@ -322,14 +322,20 @@ function editorEl(){ return app.querySelector('textarea.ed'); }
 function autosize(ta){ ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
 function focusEditor(){
   const ta = editorEl(); if (!ta) return;
-  autosize(ta);
-  ta.focus({ preventScroll: true });
-  const p = S.caret == null ? ta.value.length : S.caret;
-  try { ta.setSelectionRange(p, p); } catch {}
-  ta.addEventListener('input', () => { syncEditText(); autosize(ta); });
-  ta.addEventListener('keydown', editorKey);
-  ta.addEventListener('blur', () => { if (S.keepFocus) return; setTimeout(() => { if (S.editing && document.activeElement !== editorEl()) { commitEdit(); } }, 0); });
-  requestAnimationFrame(() => scrollRowIntoView(S.editing));
+  const inTree = ta.classList.contains('ted');
+  if (!inTree) autosize(ta);
+  if (document.activeElement !== ta) {
+    ta.focus({ preventScroll: true });
+    const p = S.caret == null ? ta.value.length : S.caret;
+    try { ta.setSelectionRange(p, p); } catch {}
+  }
+  if (!ta._bound) {
+    ta._bound = true;
+    ta.addEventListener('input', () => { syncEditText(); if (inTree) redrawTreeSoon(); else autosize(ta); });
+    ta.addEventListener('keydown', editorKey);
+    ta.addEventListener('blur', () => { if (S.keepFocus) return; setTimeout(() => { if (S.editing && document.activeElement !== editorEl()) { commitEdit(); } }, 0); });
+  }
+  requestAnimationFrame(() => inTree ? ensureTreeEditVisible() : scrollRowIntoView(S.editing));
 }
 function syncEditText(){
   const t = T(), ta = editorEl(); if (!t || !S.editing || !ta || !t.nodes[S.editing]) return;
@@ -492,9 +498,75 @@ function renderTree(){
   });
   wrap.style.setProperty('--tb', S.sel ? '64px' : '0px');
   if (S.fitPending) { S.fitPending = false; fitTree(true); }
+  // 編集を始めたときは、文字が読める大きさ（16px以上）まで拡大する
+  if (S.treeEditStart && S.editing && S.layout.pos[S.editing]) {
+    S.treeEditStart = false;
+    if (S.zoom < EDIT_ZOOM) {
+      const p = S.layout.pos[S.editing], b = S.layout.boxes[S.editing];
+      zoomAt(EDIT_ZOOM, S.panX + (p.x + b.w / 2) * S.zoom, S.panY + (p.y + b.h / 2) * S.zoom);
+    }
+  }
   applyView();
+  syncTreeEditor();
+  if (S.editing) focusEditor();
 }
-function applyView(){ const vp = $('#vp'); if (vp) vp.setAttribute('transform', `translate(${S.panX} ${S.panY}) scale(${S.zoom})`); }
+const EDIT_ZOOM = 16 / 13; // 入力欄の文字を16pxにする倍率（iPhoneが入力時に勝手に拡大しない大きさ）
+function applyView(){ const vp = $('#vp'); if (vp) vp.setAttribute('transform', `translate(${S.panX} ${S.panY}) scale(${S.zoom})`); positionTreeEditor(); }
+// 編集中のノードの枠の上に、同じ大きさ・同じ文字組みの入力欄を置く
+function syncTreeEditor(){
+  const wrap = $('#treewrap'); if (!wrap) return;
+  let ta = wrap.querySelector('textarea.ted');
+  const t = T();
+  if (!S.editing || S.view !== 'tree' || !t || !t.nodes[S.editing] || !S.layout.pos[S.editing]) { if (ta) ta.remove(); return; }
+  const n = t.nodes[S.editing];
+  if (!ta || ta.dataset.id !== S.editing) {
+    if (ta) ta.remove();
+    ta = document.createElement('textarea');
+    ta.className = 'ed ted'; ta.rows = 1; ta.dataset.id = S.editing;
+    ta.setAttribute('enterkeyhint', 'next'); ta.setAttribute('aria-label', 'ノードの文言');
+    ta.placeholder = placeholder(t, n); ta.value = n.text;
+    wrap.appendChild(ta);
+  }
+  positionTreeEditor();
+}
+function positionTreeEditor(){
+  const ta = document.querySelector('#treewrap textarea.ted'); if (!ta || !S.layout) return;
+  const id = ta.dataset.id, p = S.layout.pos[id], b = S.layout.boxes[id], n = T() && T().nodes[id];
+  if (!p || !n) return;
+  const z = S.zoom, L = LT.L, st = LT.nodeStyle(T(), n);
+  Object.assign(ta.style, {
+    left: (S.panX + p.x * z) + 'px', top: (S.panY + p.y * z) + 'px', width: (b.w * z) + 'px', height: (b.h * z) + 'px',
+    fontSize: (L.font * z) + 'px', lineHeight: (L.line * z) + 'px', fontWeight: b.weight,
+    // 枠線（2px）の分だけ内側の余白を減らし、改行位置を図と揃える
+    padding: `${L.padY * z - 2}px ${(L.padX + 10) * z - 2}px ${L.padY * z - 2}px ${L.padX * z - 2}px`,
+    borderRadius: (L.radius * z) + 'px', background: st.fill
+  });
+}
+// 入力のたびに図を描き直す（枠の高さや周りのノードの位置が変わるため）
+function redrawTreeSoon(){
+  if (redrawTreeSoon.f) return;
+  redrawTreeSoon.f = requestAnimationFrame(() => {
+    redrawTreeSoon.f = 0;
+    const t = T(), vp = $('#vp'); if (!t || !vp || S.view !== 'tree') return;
+    S.layout = computeLayout(t, true, dirShown(t));
+    vp.innerHTML = treeSVGInner(t, S.layout, { ui: true, sel: S.sel });
+    positionTreeEditor(); ensureTreeEditVisible();
+  });
+}
+// 編集中のノードが画面（キーボードとツールバーの上）に見えるように動かす
+function ensureTreeEditVisible(){
+  const wrap = $('#treewrap'); if (!wrap || !S.editing || !S.layout) return;
+  const p = S.layout.pos[S.editing], b = S.layout.boxes[S.editing]; if (!p) return;
+  const r = wrap.getBoundingClientRect(), z = S.zoom, vv = window.visualViewport;
+  const visBottom = Math.min(r.bottom, vv ? vv.offsetTop + vv.height : innerHeight) - 70;
+  const top = r.top + S.panY + p.y * z, bottom = top + b.h * z, left = r.left + S.panX + p.x * z, right = left + b.w * z;
+  let dx = 0, dy = 0;
+  if (bottom > visBottom) dy = visBottom - bottom;
+  if (top + dy < r.top + 12) dy = r.top + 12 - top;
+  if (right > r.right - 12) dx = r.right - 12 - right;
+  if (left + dx < r.left + 12) dx = r.left + 12 - left;
+  if (dx || dy) { S.panX += dx; S.panY += dy; applyView(); }
+}
 // soft=true のときは、全体が小さくなりすぎる場合にトップイシューを左上（上端）に合わせる
 function fitTree(soft){
   const wrap = $('#treewrap'), Ly = S.layout; if (!wrap || !Ly) return;
@@ -530,13 +602,20 @@ function treeTap(x, y, target){
   const hd = target.closest && target.closest('[data-hdr]');
   if (hd) return editLevelLabel(+hd.dataset.hdr);
   const nd = target.closest && target.closest('[data-id]');
-  if (nd) { S.sel = nd.dataset.id; renderTree(); renderToolbar(); openSheet(S.sel); return; }
+  if (nd) {
+    const id = nd.dataset.id;
+    if (S.editing === id) return;
+    if (S.sel === id && !S.editing) return startEdit(id);
+    if (S.editing) commitEdit({ render: false });
+    S.sel = id; renderTree(); renderToolbar(); return;
+  }
+  if (S.editing) { commitEdit(); return; }
   if (S.sel) { S.sel = null; renderTree(); renderToolbar(); }
 }
 function bindTree(wrap){
   let g = null, lastTap = 0, lastXY = null;
   const rect = () => wrap.getBoundingClientRect();
-  const onButton = e => e.target.closest && e.target.closest('button');
+  const onButton = e => e.target.closest && e.target.closest('button,textarea');
   wrap.addEventListener('touchstart', e => {
     if (onButton(e)) { g = null; return; }
     e.preventDefault();
@@ -569,7 +648,9 @@ function bindTree(wrap){
     if (g.mode === 'pan' && !g.moved && Date.now() - g.t0 < 500) {
       const now = Date.now(), r = rect();
       const p = e.changedTouches[0];
-      if (now - lastTap < 300 && lastXY && Math.hypot(p.clientX - lastXY[0], p.clientY - lastXY[1]) < 30) {
+      const onNode = g.target.closest && g.target.closest('[data-id],[data-toggle],[data-hdr]');
+      if (onNode) { lastTap = 0; treeTap(p.clientX, p.clientY, g.target); }
+      else if (now - lastTap < 300 && lastXY && Math.hypot(p.clientX - lastXY[0], p.clientY - lastXY[1]) < 30) {
         // ダブルタップ：その場所を中心に拡大（拡大済みなら全体表示）
         lastTap = 0;
         if (S.zoom >= 1.4) fitTree(); else zoomAt(Math.max(1.5, S.zoom * 1.6), p.clientX - r.left, p.clientY - r.top);
@@ -645,7 +726,6 @@ function addNode(kind, from){
   const t = T(); S.selBeforeNew = from;
   const r = mutate(t => kind === 'child' ? ops.addChild(t, from) : ops.addSibling(t, from), { render: false });
   if (!r || !r.id) return;
-  if (S.view === 'tree') { S.sel = r.id; renderEditorBody(); openSheet(r.id, { focusText: true }); return; }
   startEdit(r.id, { isNew: true });
 }
 
@@ -850,10 +930,10 @@ function actionSheet(title, items){
 /* ============ 画面上のキーボードへの追従 ============ */
 function kbHeight(){ const vv = window.visualViewport; if (!vv) return 0; return Math.max(0, innerHeight - vv.height - vv.offsetTop); }
 if (window.visualViewport) {
-  const onVV = () => { const h = kbHeight(); document.documentElement.style.setProperty('--kb', (h > 80 ? h : 0) + 'px'); if (h > 80) window.scrollTo(0, 0); };
+  const onVV = () => { const h = kbHeight(); document.documentElement.style.setProperty('--kb', (h > 80 ? h : 0) + 'px'); if (h > 80) window.scrollTo(0, 0); if (S.editing && S.view === 'tree') ensureTreeEditVisible(); };
   visualViewport.addEventListener('resize', onVV); visualViewport.addEventListener('scroll', onVV);
 }
-window.addEventListener('resize', () => { if (S.screen === 'editor' && S.view === 'tree' && !S.editing) renderTree(); });
+window.addEventListener('resize', () => { if (S.screen === 'editor' && S.view === 'tree') { if (S.editing) { positionTreeEditor(); ensureTreeEditVisible(); } else renderTree(); } });
 window.addEventListener('orientationchange', () => setTimeout(() => { if (S.screen === 'editor' && !S.editing) { if (!isPortrait()) S.view = 'tree'; S.fitPending = true; renderEditorBody(); } }, 300));
 
 /* ============ アプリの更新（Service Worker） ============ */
