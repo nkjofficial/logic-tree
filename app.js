@@ -1,6 +1,6 @@
 /* ロジックツリー スマホ版（iPhone） 画面と操作 */
 'use strict';
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const {
   esc, clamp, fmtDate, safeName, uid, kids, childMap, descendants, depthOf, placeholder, levelLabel, labelOf,
   newTree, sampleTree, normalizeTree, ops, snapshot, History, computeLayout, treeSVGInner, COLORS, PRIORITY
@@ -374,12 +374,6 @@ function editorKey(e){
     // 確定して、続けて次のノードを追加（トップイシューなら子、それ以外は兄弟）
     commitEdit({ render: false });
     addNode(id === t.rootId ? 'child' : 'sibling', id);
-  } else if (e.key === 'Backspace' && editorEl().value === '' && id !== t.rootId && !kids(t, id).length) {
-    e.preventDefault();
-    const vis = visibleIds(t), prev = vis[vis.indexOf(id) - 1] || t.rootId;
-    S.editing = null; S.editNew = false;
-    mutate(t => ops.remove(t, id), { render: false });
-    S.sel = prev; startEdit(prev);
   } else if (e.key === 'Escape') { e.preventDefault(); commitEdit(); }
 }
 
@@ -498,19 +492,12 @@ function renderTree(){
   });
   wrap.style.setProperty('--tb', S.sel ? '64px' : '0px');
   if (S.fitPending) { S.fitPending = false; fitTree(true); }
-  // 編集を始めたときは、文字が読める大きさ（16px以上）まで拡大する
-  if (S.treeEditStart && S.editing && S.layout.pos[S.editing]) {
-    S.treeEditStart = false;
-    if (S.zoom < EDIT_ZOOM) {
-      const p = S.layout.pos[S.editing], b = S.layout.boxes[S.editing];
-      zoomAt(EDIT_ZOOM, S.panX + (p.x + b.w / 2) * S.zoom, S.panY + (p.y + b.h / 2) * S.zoom);
-    }
-  }
+  // 編集を始めても倍率は変えない（ノードが見える位置へ動かすだけ）
+  S.treeEditStart = false;
   applyView();
   syncTreeEditor();
   if (S.editing) focusEditor();
 }
-const EDIT_ZOOM = 16 / 13; // 入力欄の文字を16pxにする倍率（iPhoneが入力時に勝手に拡大しない大きさ）
 function applyView(){ const vp = $('#vp'); if (vp) vp.setAttribute('transform', `translate(${S.panX} ${S.panY}) scale(${S.zoom})`); positionTreeEditor(); }
 // 編集中のノードの枠の上に、同じ大きさ・同じ文字組みの入力欄を置く
 function syncTreeEditor(){
@@ -691,6 +678,7 @@ function renderToolbar(){
       <button data-tb="in" ${isRoot ? 'disabled' : ''}>→<small>下げる</small></button>
       <button data-tb="up" ${isRoot ? 'disabled' : ''}>↑<small>上へ</small></button>
       <button data-tb="down" ${isRoot ? 'disabled' : ''}>↓<small>下へ</small></button>
+      <button data-tb="del" ${isRoot ? 'disabled' : ''} style="color:var(--danger)">✕<small style="color:var(--danger)">削除</small></button>
       <button data-tb="detail">≡<small>詳細</small></button>
     </div>`;
   } else { el.innerHTML = ''; return; }
@@ -719,6 +707,7 @@ function toolbarAction(k){
   if (k === 'sib') return addNode('sibling', id);
   if (k === 'in' || k === 'out') return mutate(t => k === 'in' ? ops.indent(t, id) : ops.outdent(t, id));
   if (k === 'up' || k === 'down') { mutate(t => ops.moveSibling(t, id, k === 'up' ? -1 : 1)); if (S.view === 'outline') scrollRowIntoView(id); return; }
+  if (k === 'del') return deleteNode(id);
   if (k === 'detail') return openSheet(id);
 }
 // 追加して、すぐ入力を始める

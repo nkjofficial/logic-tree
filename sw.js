@@ -3,7 +3,7 @@
    新しい版は自動では切り替えず、画面の「更新する」を押したときだけ切り替える。
    アプリを更新するときは VERSION を変えること。 */
 'use strict';
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const CACHE = 'logic-tree-' + VERSION;
 const FILES = ['./', 'index.html', 'core.js', 'app.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
